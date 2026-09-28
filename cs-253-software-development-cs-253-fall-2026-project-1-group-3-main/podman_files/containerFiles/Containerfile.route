@@ -1,0 +1,31 @@
+# Containerfile for the route service.
+# The Containerfiles for the other services are identical except for the
+# EXPOSE line and the file named in CMD.
+
+# Start from a published Node image. The major version is pinned on purpose:
+# "node:latest" would change under you during the semester and your build
+# would stop matching the one used for grading.
+FROM node:22-bookworm-slim
+
+# All following commands run in this directory inside the container's
+# file system, not yours.
+WORKDIR /usr/src/app
+
+# Copy ONLY the dependency list first, then install. Because this layer does
+# not mention your source code, editing railway_route.js does not force npm
+# to run again on the next build.
+COPY package*.json ./
+RUN npm install --omit=dev
+
+# Now copy the rest of the source and the .json data files.
+COPY . .
+
+# Do not run as root inside the container.
+USER node
+
+# Documents which port this service listens on inside the pod.
+# This line does NOT publish the port; that happens in podman pod create.
+EXPOSE 3002
+
+# The command that runs when a container is started from this image.
+CMD ["node", "railway_route.js"]
