@@ -1,8 +1,7 @@
 /**
- * @fileoverview Client for railway_routeSummary.js. It loads a railway
- * network file on the server, then prints route summary tests 1 to 5: the
- * summary in file order, sorted by name (A to Z, Z to A), and sorted by
- * length (shortest first, longest first).
+ * @fileoverview client_routeSummary.js: the client for railway_routeSummary.js.
+ * It asks the server to load a railway network file, then prints route summary
+ * tests 1-5: unsorted, sorted by name (A-Z, Z-A), and by length (short, long).
  * Usage: node client_routeSummary.js uk.json
  *
  * Authors: TODO add team member names (Group 3)
@@ -10,27 +9,27 @@
  */
 const axios = require('axios');
 
-/** The route summary server, reached through the pod's published host port. */
+// The host port that the pod maps to port 3001 (railway_routeSummary.js).
 const BASE_URL = 'http://localhost:30601';
 
 /**
- * Sends a GET request to the server.
- * @param {string} path The endpoint, e.g. '/routeSummary'.
- * @param {!Object=} params Query-string parameters, if any.
- * @return {!Promise<*>} The response body.
+ * Sends a GET request to the server and returns the data it sends back.
+ * @param {string} endpoint The endpoint, for example '/routeSummary'.
+ * @param {!Object=} params The query parameters, if any.
+ * @return {!Promise<*>} The data sent back by the server.
  */
-async function get(path, params) {
-  return (await axios.get(BASE_URL + path, {params})).data;
+async function get(endpoint, params) {
+  const response = await axios.get(BASE_URL + endpoint, {params: params});
+  return response.data;
 }
 
 /**
- * Loads the network file and prints the five route summary tests.
- * @param {string} fileName The railway network .json file.
+ * Loads the network file named on the command line and prints the tests.
  * @return {!Promise<void>}
  */
-async function main(fileName) {
-  const network = await get('/readNetwork', {fileName});
-  if (!network) {
+async function main() {
+  const network = await get('/readNetwork', {file: process.argv[2]});
+  if (network == null) {
     console.log('Not able to parse the input file.');
     return;
   }
@@ -40,16 +39,20 @@ async function main(fileName) {
   console.log(await get('/routeSummary'));
 
   console.log('\n===Route Summary TEST=2=SORT=ROUTE=BY=NAME=(ASC)===');
-  console.log(await get('/routeSummary', {sortBy: 'name', ascending: true}));
+  await get('/sortRoutesByName', {ascending: true});
+  console.log(await get('/routeSummary'));
 
   console.log('\n===Route Summary TEST=3=SORT=ROUTE=BY=NAME=(DESC)===');
-  console.log(await get('/routeSummary', {sortBy: 'name', ascending: false}));
+  await get('/sortRoutesByName', {ascending: false});
+  console.log(await get('/routeSummary'));
 
   console.log('\n===Route Summary TEST=4=SORT=ROUTE=BY=LENGTH=(ASC)===');
-  console.log(await get('/routeSummary', {sortBy: 'length', ascending: true}));
+  await get('/sortRoutesByLength', {ascending: true});
+  console.log(await get('/routeSummary'));
 
   console.log('\n===Route Summary TEST=5=SORT=ROUTE=BY=LENGTH=(DESC)===');
-  console.log(await get('/routeSummary', {sortBy: 'length', ascending: false}));
+  await get('/sortRoutesByLength', {ascending: false});
+  console.log(await get('/routeSummary'));
 }
 
-main(process.argv[2]).catch((error) => console.log(`Error: ${error.message}`));
+main().catch((error) => console.log(error.message));

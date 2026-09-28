@@ -1,63 +1,60 @@
 /**
- * @fileoverview Client for railway_route.js. It loads a railway network file
- * on the server, then prints route tests 1 to 3 for one route (find it, print
- * it, measure it) and bonus test 4 (a single route between two stations).
- * Usage: node client_route.js <file.json> <routeName> <startStop> <endStop>
- * e.g.   node client_route.js simpleton.json Simpleton Betaford Epsilon
+ * @fileoverview client_route.js: the client for railway_route.js. It asks the
+ * server to load a railway network file, then prints route tests 1-3 for one
+ * route and bonus test 4 (a single route that has two given stops).
+ * Usage: node client_route.js <file> <routeName> <startStop> <endStop>
+ * Example: node client_route.js simpleton.json Simpleton Betaford Epsilon
  *
  * Authors: TODO add team member names (Group 3)
  * Last modified: 2026-09-28
  */
 const axios = require('axios');
 
-/** The route server, reached through the pod's published host port. */
+// The host port that the pod maps to port 3002 (railway_route.js).
 const BASE_URL = 'http://localhost:30602';
 
 /**
- * Sends a GET request to the server.
- * @param {string} path The endpoint, e.g. '/getRoute'.
- * @param {!Object=} params Query-string parameters, if any.
- * @return {!Promise<*>} The response body.
+ * Sends a GET request to the server and returns the data it sends back.
+ * @param {string} endpoint The endpoint, for example '/getRoute'.
+ * @param {!Object=} params The query parameters, if any.
+ * @return {!Promise<*>} The data sent back by the server.
  */
-async function get(path, params) {
-  return (await axios.get(BASE_URL + path, {params})).data;
+async function get(endpoint, params) {
+  const response = await axios.get(BASE_URL + endpoint, {params: params});
+  return response.data;
 }
 
 /**
- * Loads the network file and prints the route tests.
- * @param {string} fileName The railway network .json file.
- * @param {string} routeName The route used in tests 1 to 3.
- * @param {string} startStop The first station for the bonus test.
- * @param {string} endStop The second station for the bonus test.
+ * Loads the network file named on the command line and prints the tests.
  * @return {!Promise<void>}
  */
-async function main(fileName, routeName, startStop, endStop) {
-  const network = await get('/readNetwork', {fileName});
-  if (!network) {
+async function main() {
+  const fileName = process.argv[2];
+  const routeName = process.argv[3];
+  const startStop = process.argv[4];
+  const endStop = process.argv[5];
+
+  const network = await get('/readNetwork', {file: fileName});
+  if (network == null) {
     console.log('Not able to parse the input file.');
     return;
   }
   console.log('ROUTE Tests');
 
   console.log('\n===Route TEST=1=GET=ROUTE===');
-  const route = await get('/getRoute', {routeName});
-  if (!route) {
-    console.log(`No route named ${routeName}`);
-    return;
-  }
-  console.log(`Found: ${route.name}`);
+  const route = await get('/getRoute', {routeName: routeName});
+  console.log('Found: ' + route.name);
 
   console.log('\n===Route TEST=2=ROUTE=TO=STRING===');
-  console.log((await axios.post(`${BASE_URL}/routeToString`, route)).data);
+  console.log(await get('/routeToString', {routeName: routeName}));
 
   console.log('\n===Route TEST=3=ROUTE=DISTANCE===');
-  const miles = (await axios.post(`${BASE_URL}/routeDistance`, route)).data;
-  console.log(`Distance of Line as calculated: ${miles}`);
+  const distance = await get('/routeDistance', {routeName: routeName});
+  console.log('Distance of Line as calculated: ' + distance);
 
   console.log('\n====(OPTIONAL) Route TEST=4=BONUS1=FIND=FROM=TO===');
-  console.log(await get('/findRoute', {startStop, endStop}));
+  const stops = {startStop: startStop, endStop: endStop};
+  console.log(await get('/findRoute', stops));
 }
 
-main(...process.argv.slice(2)).catch((error) => {
-  console.log(`Error: ${error.message}`);
-});
+main().catch((error) => console.log(error.message));

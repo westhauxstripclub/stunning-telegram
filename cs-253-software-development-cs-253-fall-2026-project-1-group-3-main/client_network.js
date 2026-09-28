@@ -1,7 +1,6 @@
 /**
- * @fileoverview Client for railway_network.js. It loads a railway network
- * file on the server, then prints network tests 1 to 6: the network name, the
- * routes, the route names, the number of stations, and the longest route.
+ * @fileoverview client_network.js: the client for railway_network.js. It asks
+ * the server to load a railway network file, then prints network tests 1-6.
  * Usage: node client_network.js uk.json
  *
  * Authors: TODO add team member names (Group 3)
@@ -9,27 +8,27 @@
  */
 const axios = require('axios');
 
-/** The network server, reached through the pod's published host port. */
+// The host port that the pod maps to port 3000 (railway_network.js).
 const BASE_URL = 'http://localhost:30600';
 
 /**
- * Sends a GET request to the server.
- * @param {string} path The endpoint, e.g. '/getRoutes'.
- * @param {!Object=} params Query-string parameters, if any.
- * @return {!Promise<*>} The response body.
+ * Sends a GET request to the server and returns the data it sends back.
+ * @param {string} endpoint The endpoint, for example '/getRoutes'.
+ * @param {!Object=} params The query parameters, if any.
+ * @return {!Promise<*>} The data sent back by the server.
  */
-async function get(path, params) {
-  return (await axios.get(BASE_URL + path, {params})).data;
+async function get(endpoint, params) {
+  const response = await axios.get(BASE_URL + endpoint, {params: params});
+  return response.data;
 }
 
 /**
- * Loads the network file and prints the six network tests.
- * @param {string} fileName The railway network .json file.
+ * Loads the network file named on the command line and prints the tests.
  * @return {!Promise<void>}
  */
-async function main(fileName) {
-  const network = await get('/readNetwork', {fileName});
-  if (!network) {
+async function main() {
+  const network = await get('/readNetwork', {file: process.argv[2]});
+  if (network == null) {
     console.log('Not able to parse the input file.');
     return;
   }
@@ -40,8 +39,8 @@ async function main(fileName) {
 
   console.log('\n===Network TEST=2=GETTING=ROUTES=ARRAY===');
   const routes = await get('/getRoutes');
-  console.log(`There are ${routes.length} routes on this network`);
-  console.log(`The type of the routes is ${typeof routes}`);
+  console.log('There are ' + routes.length + ' routes on this network');
+  console.log('The type of the routes is ' + typeof routes);
 
   console.log('\n===Network TEST=3=ROUTE=NAMES===');
   console.log(await get('/getRouteNames'));
@@ -51,12 +50,12 @@ async function main(fileName) {
 
   console.log('\n===Network TEST=5=Total_Stations===');
   const stations = await get('/totalStations');
-  console.log(`There are ${stations} stations in this network.`);
+  console.log('There are ' + stations + ' stations in this network.');
 
   console.log('\n===Network TEST=6=FIND=LONGEST=ROUTE===');
   const longest = await get('/findLongestRoute');
-  const text = (await axios.post(`${BASE_URL}/routeToString`, longest)).data;
-  console.log(`Longest route is: ${text}`);
+  const text = await get('/routeToString', {routeName: longest.name});
+  console.log('Longest route is: ' + text);
 }
 
-main(process.argv[2]).catch((error) => console.log(`Error: ${error.message}`));
+main().catch((error) => console.log(error.message));
