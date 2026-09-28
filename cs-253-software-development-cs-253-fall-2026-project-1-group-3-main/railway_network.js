@@ -1,306 +1,100 @@
-const express = require("express");
-const fs = require("fs");
+/**
+ * @fileoverview Server for the "network" part of the Railway API. It answers
+ * questions about a whole railway network: its name, its routes, how many
+ * stations it has, and which route is the longest.
+ * Listens on port 3000 inside the pod.
+ *
+ * Authors: TODO add team member names (Group 3)
+ * Last modified: 2026-09-28
+ */
+const express = require('express');
+const {readNetwork, routeDistance, routeToString} = require('./shared.js');
 
-
+const PORT = 3000;
 const app = express();
+app.use(express.json()); // lets POST endpoints read a JSON body
 
+/** @type {?Object} The network loaded by /readNetwork. */
 let network = null;
-// ========` app calls ==========
-app.get("/readNetwork", (req, res) => {
-    const fileName = req.query.file;
 
-    if (!fileName) {
-        return res.status(400).send("Bad filename");
-    }
-    let parsed = readNetwork(fileName);
-    let loaded = setNetwork(parsed);
-    if (!loaded) {
-        return res.status(400).send("Not able to parse the input file.");
-    }
-
-    res.send("file loaded");
-});
-
-app.get("/getNetworkName", (req, res) => {
-  if (network == null) {
-    return res.status(400).send("Network not loaded");
-  }
-  res.send(String(getNetworkName() ) );
-});
-app.get("/getRoutes", (req, res) => {
-  if (network == null) {
-    return res.status(400).send("Network not loaded");
-  }
-
-  res.json(getRoutes());
-});
-app.get("/getRouteNames", (req, res) => {
-  if (network == null) {
-    return res.status(400).send("Network not loaded");
-  }
-  res.json(getRouteNames() );
-}); 
-app.get("/routeNamesToString", (req, res) => {
-  if (network == null) {
-    return res.status(400).send("Network not loaded");
-  } 
-  res.send(routeNamesToString() );
-});
-app.get("/totalStations", (req, res) => {
-  if (network == null) {
-    return res.status(400).send("Network not loaded");
-  }
-
-  res.send(String(totalStations(network) ) );
-} );
-
-app.get("/findLongestRoute", (req, res) => {
-  if (network == null) {
-    return res.status(400).send("Network not loaded");
-  }
-
-  const longest = findLongestRoute();
-  if (longest == null) {
-    return res.status(404).send("No routes found"); //404 NOT FOUND ERROR 
-  }
-  res.json(longest);
-});
-app.get("/longestRouteToString", (req, res) => {
-  if (network == null) {
-    return res.status(400).send("Network not loaded");
-  }
-
-  const longest = findLongestRoute();
-  if (longest == null) {
-    return res.status(404).send("No routes found");
-  }
-
-  res.send(routeToString(longest));
-});
-
-
-//====== endpoints ======
-function readNetwork(fileName) {
-    try {
-        let text = fs.readFileSync(fileName, "utf-8");
-
-        network = JSON.parse(text);
-        return network;
-    }
-    catch (err) {
-        console.log("file could not be read");
-        return null; //  if the file cant be read return null
-    }
-}
-function getNetworkName() {
-
-    if (network == null) {
-        return null;
-    }
-
-    return network.networkName;
-}
-function getRoutes() {
-
-    if (network == null) {
-        return null;
-    }
-
-    return network.routes;
-}
+/**
+ * Returns the names of the routes, in file order.
+ * @return {!Array<string>} The route names.
+ */
 function getRouteNames() {
-
-    if (network == null) {
-        return null;
-    }
-
-    let routes = network.routes;
-
-    if (!Array.isArray(routes)) {
-        return null;
-    }
-
-    let names = [];
-
-    for (let i = 0; i < routes.length; i++) {
-        names.push(routes[i].name);
-    }
-
-    return names;
-}
-function routeNamesToString() {
-    if (getRouteNames() == null) {
-        return null;
-    }
-    let names = getRouteNames();
-
-    let output = "";
-
-    for (let i = 0; i < names.length; i++) {
-
-        output = output + names[i];
-
-        if (i < names.length - 1) {
-            output = output + ",\n";
-        }
-        else{
-            output = output + ".";
-        }
-    }
-
-    return output;
-}
-function routeDistance(route) {
-
-    if (route == null) {
-        return 0;
-    }
-
-    if (!Array.isArray(route.stops)) {
-        return 0;
-    }
-
-    let total = 0;
-
-    for (let i = 0; i < route.stops.length; i++) {
-
-        let stopObject = route.stops[i];
-
-        if (stopObject != null) {
-
-            let distance = stopObject.distanceToNext;
-
-            if (distance != null) {
-                total = total + Number(distance);
-            }
-        }
-    }
-
-    return total;
+  return network.routes.map((route) => route.name);
 }
 
-//inNetwork is for when the object passed is specified and not on the loacal network value
-function totalStations(inNetwork) {
-
-    if (inNetwork == null) {
-        return 0;
+/**
+ * Counts the stations in a network. A station on several routes has the
+ * same stationID on each one, so it is counted only once.
+ * @param {!Object} data A railway network.
+ * @return {number} The number of different stations.
+ */
+function totalStations(data) {
+  const stationIds = new Set();
+  for (const route of data.routes) {
+    for (const stop of route.stops) {
+      stationIds.add(stop.stationID);
     }
-
-    if (!Array.isArray(inNetwork.routes)) {
-        return 0;
-    }
-
-    let seen = new Set();
-
-    for (let i = 0; i < inNetwork.routes.length; i++) {
-
-        let route = inNetwork.routes[i];
-
-        if (!Array.isArray(route.stops)) {
-            continue;
-        }
-
-        for (let j = 0; j < route.stops.length; j++) {
-
-            let stop = route.stops[j];
-
-            if (stop != null) {
-                seen.add(stop.stationID);
-            }
-        }
-    }
-
-    return seen.size;
+  }
+  return stationIds.size;
 }
+
+/**
+ * Finds the longest route without reordering the routes. On a tie the first
+ * of the tied routes is returned.
+ * @return {!Object} The longest route.
+ */
 function findLongestRoute() {
-
-    if (network == null) {
-        return null;
+  let longest = network.routes[0];
+  for (const route of network.routes) {
+    if (routeDistance(route) > routeDistance(longest)) {
+      longest = route;
     }
-
-    let routes = network.routes;
-
-    if (!Array.isArray(routes) || routes.length == 0) {
-        return null;
-    }
-
-    let longest = routes[0];
-    let maxDistance = routeDistance(longest);
-
-    for (let i = 1; i < routes.length; i++) {
-
-        let dist = routeDistance(routes[i]);
-
-        if (dist > maxDistance) {
-            maxDistance = dist;
-            longest = routes[i];
-        }
-    }
-
-    return longest;
-}
-function routeToString(route) {
-
-    if (route == null) {
-        return "Route not found";
-    }
-
-    let miles = cumulativeMiles(route);
-    let total = routeDistance(route);
-
-    let output = "";
-
-    output = output + route.name + "(" + route.color + ")\n";
-    output = output + "STATIONS:\n";
-
-    for (let i = 0; i < route.stops.length; i++) {
-
-        let stop = route.stops[i];
-
-        output = output +
-            (i + 1) + " " +
-            stop.stationName + " " +
-            miles[i] + " miles\n";
-    }
-
-    output = output + "Total Route Distance: " + total + " miles";
-
-    return output;
+  }
+  return longest;
 }
 
-function stringHelper(str) {
-    if (str == null) {
-        return "";
-    }
+/**
+ * GET /readNetwork?fileName=uk.json
+ * Loads the network file. Responds with the network, or null if the file
+ * cannot be read or parsed.
+ */
+app.get('/readNetwork', (req, res) => {
+  network = readNetwork(req.query.fileName);
+  res.json(network);
+});
 
-    str = String(str);     // convert to string
-    str = str.trim();      // remove spaces from beginning and end
-    str = str.toLowerCase();  // make lowercase
+/** GET /getNetworkName (Test 1): responds with the network's name. */
+app.get('/getNetworkName', (req, res) => res.send(network.networkName));
 
-    return str;
-}
-function cumulativeMiles (route) {
-	let milesArray = [];
+/** GET /getRoutes (Test 2): responds with the array of route objects. */
+app.get('/getRoutes', (req, res) => res.json(network.routes));
 
-    if (route == null) {
-        return milesArray;
-    }
-    if (!Array.isArray(route.stops )) {
-        return milesArray;
-    }
+/** GET /getRouteNames (Test 3): responds with an array of the route names. */
+app.get('/getRouteNames', (req, res) => res.json(getRouteNames()));
 
-    let total = 0;
-    for (let i = 0; i < route.stops.length; i++) {
-        milesArray.push(total );
-        let stopObject = route.stops[i ];
+/**
+ * GET /routeNamesToString (Test 4): responds with the route names, one per
+ * line, with a comma after every name but the last.
+ */
+app.get('/routeNamesToString', (req, res) => {
+  res.send(getRouteNames().join(',\n'));
+});
 
-        if (stopObject != null) {
-            let distance = stopObject.distanceToNext ;
-            if (distance != null) {
-                total = total + Number( distance );
-            }
-        }
-    }
+/** GET /totalStations (Test 5): responds with the number of stations. */
+app.get('/totalStations', (req, res) => res.json(totalStations(network)));
 
-    return milesArray;
-}
+/** GET /findLongestRoute (Test 6): responds with the longest route object. */
+app.get('/findLongestRoute', (req, res) => res.json(findLongestRoute()));
+
+/**
+ * POST /routeToString (Test 6): the request body is a route object.
+ * Responds with that route as text.
+ */
+app.post('/routeToString', (req, res) => res.send(routeToString(req.body)));
+
+app.listen(PORT, () => {
+  console.log(`railway_network.js listening on port ${PORT}`);
+});

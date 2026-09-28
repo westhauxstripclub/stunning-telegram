@@ -1,271 +1,86 @@
-const express = require("express");
-const fs = require("fs");
+/**
+ * @fileoverview Server for the "route" part of the Railway API. It answers
+ * questions about one route, found by its name, and (bonus) finds a single
+ * route that connects two stations. Listens on port 3002 inside the pod.
+ *
+ * Authors: TODO add team member names (Group 3)
+ * Last modified: 2026-09-28
+ */
+const express = require('express');
+const {readNetwork, routeDistance, routeToString} = require('./shared.js');
 
-
+const PORT = 3002;
 const app = express();
+app.use(express.json()); // lets POST endpoints read a JSON body
 
+/** @type {?Object} The network loaded by /readNetwork. */
 let network = null;
-// ======== app calls ==========
-app.get("/readNetwork", (req, res) => {
-    const fileName = req.query.file;
 
-    if (!fileName) {
-        return res.status(400).send("Bad filename");
-    }
-    let parsed = readNetwork(fileName);
-    let loaded = setNetwork(parsed);
-    if (!loaded) {
-        return res.status(400).send("Not able to parse the input file.");
-    }
-
-    res.send("file loaded");
-});
-
-app.get("/getRoute", (req, res) => {
-    if (network == null) {
-        return res.status(400).send("Network not loaded");
-    }
-
-    const routeName = req.query.routeName;
-    if (!routeName) {
-        return res.status(400).send("Missing routeName");
-    }
-
-    const route = getRoute(routeName);
-    if (route == null) {
-        return res.status(404).send("Route not found");
-    }
-
-    res.json(route);
-});
-app.get("/routeToString", (req, res) => {
-    if (network == null) {
-        return res.status(400).send("Network not loaded");
-    }
-
-    const routeName = req.query.routeName;
-    if (!routeName) {
-        return res.status(400).send("Missing routeName");
-    }
-
-    const route = getRoute(routeName);
-    res.send(routeToString(route) );
-});
-app.get("/routeDistance", (req, res) => {
-    if (network == null) {
-        return res.status(400).send("Network not loaded");
-    }
-
-    const routeName = req.query.routeName;
-    if (!routeName) {
-        return res.status(400).send("Missing routeName");
-    }
-
-    const route = getRoute(routeName);
-    res.send(String(routeDistance(route )) );
-});
-app.get("/getDistanceBetweenStops", (req, res) => {
-    if (network == null) {
-        return res.status(400).send("Network not loaded");
-    }
-
-    const routeName = req.query.routeName;
-    const startStop = req.query.startStop;
-    const endStop = req.query.endStop;
-
-    if (!routeName || !startStop || !endStop) {
-        return res.status(400).send("Missing routeName/startStop/endStop");
-    }
-
-    const route = getRoute(routeName);
-    const result = getDistanceBetweenStops(route, startStop, endStop);
-
-    if (result == null) {
-        return res.status(404).send("Stop not found");
-    }
-
-    res.send(result);
-});
-app.get("/findRoute", (req, res) => {
-    if (network == null) {
-        return res.status(400).send("Network not loaded");
-    }
-
-    const startStop = req.query.startStop;
-    const endStop = req.query.endStop;
-
-    if (!startStop || !endStop) {
-        return res.status(400).send("Missing startStop or endStop");
-    }
-
-    res.send(findRoute(startStop, endStop));
-});
-
-
-
-// ====== endpoints ======
-function readNetwork(fileName) {
-    try {
-        let text = fs.readFileSync(fileName, "utf-8");
-
-        network = JSON.parse(text);
-        return network;
-    }
-    catch (err) {
-        console.log("file could not be read");
-        return null; //  if the file cant be read return null
-    }
-}
-function getRoute(routeName) {
-
-    // compares names using stringHelper so case/spaces dont matter
-    for (let i = 0; i < network.routes.length; i++) {
-
-        let route = network.routes[i];
-
-        if (stringHelper(route.name) == stringHelper(routeName)) {
-            return route;
-        }
-    }
-
-    return null;
-}
-function routeToString(route) {
-
-    if (route == null) {
-        return "Route not found";
-    }
-
-    let miles = cumulativeMiles(route);
-    let total = routeDistance(route);
-
-    let output = "";
-
-    output = output + "===TEST=2=ROUTE=TO=STRING===\n";
-    output = output + "ROUTE:" + route.name + "(" + route.color + ")\n";
-    output = output + "STATIONS:\n";
-
-    for (let i = 0; i < route.stops.length; i++) {
-
-        let stop = route.stops[i];
-
-        output = output +
-            (i + 1) + " " +
-            stop.stationName + " " +
-            miles[i] + " miles\n";
-    }
-
-    output = output + "Total Route Distance: " + total + " miles";
-
-    return output;
-}
-function routeDistance(route) {
-
-    if (route == null) {
-        return 0;
-    }
-
-    if (!Array.isArray(route.stops)) {
-        return 0;
-    }
-
-    let total = 0;
-
-    for (let i = 0; i < route.stops.length; i++) {
-
-        let stopObject = route.stops[i];
-
-        if (stopObject != null) {
-
-            let distance = stopObject.distanceToNext;
-
-            if (distance != null) {
-                total += Number(distance);
-            }
-        }
-    }
-
-    return total;
-}
-
-//============== Bous endpoints =====================
-
-function getDistanceBetweenStops(route, startStop, endStop) {
-
-    let startIndex = findStopIndexByName(route, startStop);
-    let endIndex = findStopIndexByName(route, endStop);
-
-    if (startIndex == -1 || endIndex == -1) {
-        return null;
-    }
-
-    let miles = cumulativeMiles(route);
-
-    let distance =
-        Math.abs(miles[endIndex] - miles[startIndex]);
-
-    let stopsCount =
-        Math.abs(endIndex - startIndex) + 1;
-
-  
-    return route.name + ": " +
-        startStop + " to " +
-        endStop + " " +
-        stopsCount + " stops and " +
-        distance + " miles";
-}
+/**
+ * Bonus: finds a single route that stops at both stations and describes the
+ * trip between them. If several routes do, the last one in the file is used
+ * (that is what the smokey.json sample output shows).
+ * @param {string} startStop Name of the station the trip starts at.
+ * @param {string} endStop Name of the station the trip ends at.
+ * @return {string} e.g. "Simpleton Betaford to Epsilon 3 stops and 75 miles",
+ *     or "No direct route found from Elton to Bury".
+ */
 function findRoute(startStop, endStop) {
-
-    for (let i = 0; i < network.routes.length; i++) {
-
-        let route = network.routes[i];
-
-        let startIndex = findStopIndexByName(route, startStop);
-        let endIndex = findStopIndexByName(route, endStop);
-
-        if (startIndex != -1 && endIndex != -1) {
-            return getDistanceBetweenStops(route, startStop, endStop);
-        }
+  for (const route of [...network.routes].reverse()) {
+    const names = route.stops.map((stop) => stop.stationName);
+    const from = names.indexOf(startStop);
+    const to = names.indexOf(endStop);
+    if (from !== -1 && to !== -1) {
+      // Each stop from the first station up to the second is one leg.
+      const legs = route.stops.slice(Math.min(from, to), Math.max(from, to));
+      const miles = legs.reduce((sum, stop) => sum + stop.distanceToNext, 0);
+      const stops = legs.length === 1 ? '1 stop' : `${legs.length} stops`;
+      return `${route.name} ${startStop} to ${endStop} ` +
+          `${stops} and ${miles} miles`;
     }
-
-    return "No direct route found between " +
-           startStop + " to " +
-           endStop + ".";
+  }
+  return `No direct route found from ${startStop} to ${endStop}`;
 }
 
-function stringHelper(str) {
-    if (str == null) {
-        return "";
-    }
+/**
+ * GET /readNetwork?fileName=uk.json
+ * Loads the network file. Responds with the network, or null if the file
+ * cannot be read or parsed.
+ */
+app.get('/readNetwork', (req, res) => {
+  network = readNetwork(req.query.fileName);
+  res.json(network);
+});
 
-    str = String(str);     // convert to string
-    str = str.trim();      // remove spaces from beginning and end
-    str = str.toLowerCase();  // make lowercase
+/**
+ * GET /getRoute?routeName=Simpleton (Test 1)
+ * Responds with the route object with that name, or null if there is none.
+ */
+app.get('/getRoute', (req, res) => {
+  const route = network.routes.find((r) => r.name === req.query.routeName);
+  res.json(route ?? null);
+});
 
-    return str;
-}
-function cumulativeMiles (route) {
-	let milesArray = [];
+/**
+ * POST /routeToString (Test 2): the request body is a route object.
+ * Responds with that route as text.
+ */
+app.post('/routeToString', (req, res) => res.send(routeToString(req.body)));
 
-    if (route == null) {
-        return milesArray;
-    }
-    if (!Array.isArray(route.stops )) {
-        return milesArray;
-    }
+/**
+ * POST /routeDistance (Test 3): the request body is a route object.
+ * Responds with the route's length in miles.
+ */
+app.post('/routeDistance', (req, res) => res.json(routeDistance(req.body)));
 
-    let total = 0;
-    for (let i = 0; i < route.stops.length; i++) {
-        milesArray.push(total );
-        let stopObject = route.stops[i ];
+/**
+ * GET /findRoute?startStop=Betaford&endStop=Epsilon (bonus Test 4)
+ * Responds with the trip description from findRoute().
+ */
+app.get('/findRoute', (req, res) => {
+  res.send(findRoute(req.query.startStop, req.query.endStop));
+});
 
-        if (stopObject != null) {
-            let distance = stopObject.distanceToNext ;
-            if (distance != null) {
-                total = total + Number( distance );
-            }
-        }
-    }
-
-    return milesArray;
-}
+app.listen(PORT, () => {
+  console.log(`railway_route.js listening on port ${PORT}`);
+});

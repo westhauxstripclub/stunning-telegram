@@ -1,179 +1,89 @@
-const express = require("express");
-const fs = require("fs");
+/**
+ * @fileoverview Server for the "routeSummary" part of the Railway API. It
+ * responds with a summary of a railway network, one line per route, with the
+ * routes in file order or sorted by name or by length (ascending or
+ * descending). Listens on port 3001 inside the pod.
+ *
+ * Authors: TODO add team member names (Group 3)
+ * Last modified: 2026-09-28
+ */
+const express = require('express');
+const {readNetwork, routeDistance} = require('./shared.js');
 
-
+const PORT = 3001;
 const app = express();
 
+/** @type {?Object} The network loaded by /readNetwork. */
 let network = null;
-//========== app calls ==========
-app.get("/readNetwork", (req, res) => {
-    const fileName = req.query.file;
 
-    if (!fileName) {
-        return res.status(400).send("Bad filename");
-    }
-    let parsed = readNetwork(fileName);
-    let loaded = setNetwork(parsed);
-    if (!loaded) {
-        return res.status(400).send("Not able to parse the input file.");
-    }
+/**
+ * Builds the route summary: one line per route with its name, first station,
+ * last station, and length, padded so the columns roughly line up.
+ * @param {!Array<!Object>} routes The routes, in the order to list them.
+ * @return {string} The summary text.
+ */
+function routeSummary(routes) {
+  const lines = routes.map((route) => {
+    const first = route.stops[0].stationName;
+    const last = route.stops[route.stops.length - 1].stationName;
+    return `${route.name.padEnd(20)} - ${first.padEnd(15)} to ` +
+        `${last.padEnd(15)} - ${routeDistance(route)} miles`;
+  });
+  return ['Routes Summary', '==============', ...lines].join('\n');
+}
 
-    res.send("file loaded");
+/**
+ * Sorts routes by name. Returns a sorted copy, so the network's own route
+ * order never changes. Descending is the ascending list reversed.
+ * @param {!Array<!Object>} routes The routes to sort.
+ * @param {boolean} ascending True for A to Z, false for Z to A.
+ * @return {!Array<!Object>} The sorted copy.
+ */
+function sortRoutesByName(routes, ascending) {
+  const sorted = [...routes].sort((a, b) => a.name.localeCompare(b.name));
+  return ascending ? sorted : sorted.reverse();
+}
+
+/**
+ * Sorts routes by length. Returns a sorted copy, so the network's own route
+ * order never changes. Routes of equal length keep their file order, and
+ * descending is the ascending list reversed.
+ * @param {!Array<!Object>} routes The routes to sort.
+ * @param {boolean} ascending True for shortest first, false for longest first.
+ * @return {!Array<!Object>} The sorted copy.
+ */
+function sortRoutesByLength(routes, ascending) {
+  const byLength = (a, b) => routeDistance(a) - routeDistance(b);
+  const sorted = [...routes].sort(byLength);
+  return ascending ? sorted : sorted.reverse();
+}
+
+/**
+ * GET /readNetwork?fileName=uk.json
+ * Loads the network file. Responds with the network, or null if the file
+ * cannot be read or parsed.
+ */
+app.get('/readNetwork', (req, res) => {
+  network = readNetwork(req.query.fileName);
+  res.json(network);
 });
 
-app.get("/routeSummary", (req, res) => {
-    if (network == null) {
-        return res.status(400).send("Network not loaded");
-    }
-
-    res.send(routeSummary() );
+/**
+ * GET /routeSummary?sortBy=name&ascending=true (Tests 1 to 5)
+ * Responds with the route summary. sortBy is 'name' or 'length' (leave it out
+ * to keep file order); ascending=false sorts in descending order.
+ */
+app.get('/routeSummary', (req, res) => {
+  const ascending = req.query.ascending !== 'false';
+  let routes = network.routes;
+  if (req.query.sortBy === 'name') {
+    routes = sortRoutesByName(routes, ascending);
+  } else if (req.query.sortBy === 'length') {
+    routes = sortRoutesByLength(routes, ascending);
+  }
+  res.send(routeSummary(routes));
 });
 
-app.get("/sortRoutesByName", (req, res) => {
-    let ascending = req.query.ascending;
-    let boolAscending = (ascending == null) ? true : (String(ascending) === "true");
-    //if else for comparing the output of req.query.ascending (string) to (bool)
-    //then if anything but true, false
-    //since JS takes any string as true, two comparisons are needed instead of one
-    //this was confusing to work with.
-
-    // this sorts the loaded global network
-    sortRoutesByName(network, boolAscending);
-    res.send("loaded");
+app.listen(PORT, () => {
+  console.log(`railway_routeSummary.js listening on port ${PORT}`);
 });
-app.get("/sortRoutesByLength", (req, res) => {
-    let ascending = req.query.ascending;
-    let boolAscending = (ascending == null) ? true : (String(ascending) === "true");
-
-    sortRoutesByLength(network, boolAscending);
-    res.send("loaded");
-});
-
-
-
-
-//========== endpoints ==========
-function readNetwork(fileName) {
-    try {
-        let text = fs.readFileSync(fileName, "utf-8");
-
-        network = JSON.parse(text);
-        return network;
-    }
-    catch (err) {
-        console.log("file could not be read");
-        return null; //  if the file cant be read return null
-    }
-}
-function routeSummary() {
-
-    if (network == null) {
-        return null;
-    }
-
-    let output = "";
-    output = output + "Routes Summary\n";
-    output = output + "==============\n";
-
-    // loops routes and builds it up
-    for (let i = 0; i < network.routes.length; i++) {
-
-        let route = network.routes[i];
-
-        let start = route.stops[0].stationName;
-        let end = route.stops[route.stops.length - 1].stationName;
-        let dist = routeDistance(route);
-
-        output = output +
-            route.name + " - " +
-            start + " to " +
-            end + " - " +
-            dist + " miles\n";
-    }
-
-    return output;
-}
-function sortRoutesByName(newNetwork, ascending) {
-    if (network == null) {
-        console.log("attempting to sort by name before loading network");
-        return; }
-    if (typeof newNetwork === "boolean") {
-        ascending = newNetwork;
-        newNetwork = null;
-    }
-    if (ascending == null) {
-        ascending = true;
-    }
-    if (newNetwork == null) {
-        newNetwork = network;
-    }
-
-    //nested sort(a,b for every route)
-    newNetwork.routes.sort(function (a, b) {
-
-        let nameA = stringHelper(a.name);
-        let nameB = stringHelper(b.name);
-        //these swap or dont swap depending on ascending bool
-        if (nameA < nameB) {
-            return ascending ? -1 : 1;
-        }
-        if (nameA > nameB) {
-            return ascending ? 1 : -1;
-        }
-
-        return 0;
-    });
-}
-function addDistances(newNetwork) {
-    if (newNetwork == null) {
-        newNetwork = network;
-    }
-    if (network == null) {
-            console.log("attempting to add distance before loading network");
-            return;
-    }
-    // sets route.distance on each route (mutates route objects)
-    for (let i = 0; i < network.routes.length; i++) {
-        network.routes[i].distance = routeDistance(network.routes[i]);
-    }
-}
-function sortRoutesByLength(newNetwork, ascending) {
-    if (network == null) {
-        console.log("attempting to sort by length before loading network");
-        return;
-    }
-    
-    if (typeof newNetwork === "boolean") {
-        ascending = newNetwork;
-        newNetwork = null;
-    }
-    if (ascending == null) {
-        ascending = true;
-    }
-    if (newNetwork == null) {
-        newNetwork = network;
-    }
-
-    addDistances(newNetwork);
-
-    network.routes.sort(function (a, b) {
-
-        if (ascending) {
-            return a.distance - b.distance;
-        } else {
-            return b.distance - a.distance;
-        }
-    });
-}
-
-function stringHelper(str) {
-    if (str == null) {
-        return "";
-    }
-
-    str = String(str);     // convert to string
-    str = str.trim();      // remove spaces from beginning and end
-    str = str.toLowerCase();  // make lowercase
-
-    return str;
-}
