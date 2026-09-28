@@ -1,7 +1,6 @@
 /**
- * @fileoverview client_routeSummary.js: the client for railway_routeSummary.js.
- * It asks the server to load a railway network file, then prints route summary
- * tests 1-5: unsorted, sorted by name (A-Z, Z-A), and by length (short, long).
+ * @fileoverview Route summary client: loads a network file on the route
+ * summary server and prints route summary tests 1-5.
  * Usage: node client_routeSummary.js uk.json
  *
  * Authors: TODO add team member names (Group 3)
@@ -9,27 +8,26 @@
  */
 const axios = require('axios');
 
-// The host port that the pod maps to port 3001 (railway_routeSummary.js).
 const BASE_URL = 'http://localhost:30601';
 
 /**
- * Sends a GET request to the server and returns the data it sends back.
+ * Sends a GET request to the server.
  * @param {string} endpoint The endpoint, for example '/routeSummary'.
- * @param {!Object=} params The query parameters, if any.
- * @return {!Promise<*>} The data sent back by the server.
+ * @param {!Object=} params The query parameters.
+ * @return {!Promise<*>} The data the server sends back.
  */
 async function get(endpoint, params) {
-  const response = await axios.get(BASE_URL + endpoint, {params: params});
+  const response = await axios.get(BASE_URL + endpoint, {params});
   return response.data;
 }
 
 /**
- * Loads the network file named on the command line and prints the tests.
+ * Prints the route summary tests for the file named on the command line.
  * @return {!Promise<void>}
  */
 async function main() {
   const network = await get('/readNetwork', {file: process.argv[2]});
-  if (network == null) {
+  if (!network) {
     console.log('Not able to parse the input file.');
     return;
   }
@@ -55,4 +53,4 @@ async function main() {
   console.log(await get('/routeSummary'));
 }
 
-main().catch((error) => console.log(error.message));
+main();
